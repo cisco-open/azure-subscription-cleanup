@@ -1,0 +1,9 @@
+{
+  "bindings": [
+    {
+      "name": "resourceId",
+      "type": "activityTrigger",
+      "direction": "in"
+    }
+  ]
+}

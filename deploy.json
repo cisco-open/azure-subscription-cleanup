@@ -1,0 +1,417 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/subscriptionDeploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "resourceBaseName": {
+            "defaultValue": "AzureSubscriptionCleanup",
+            "type": "string",
+            "metadata": {
+                "description": "Base name for Azure Cleanup Resources that will be deployed by this script"
+            }
+        },
+        "enableTestMode": {
+            "defaultValue": "true",
+            "type": "bool",
+            "metadata": {
+                "description": "When set to true Azure Functions will work in a test mode and will not remove expired resources. Can be changed after deployment by updating the environment variable on Azure Function App: WHATIF=true(test mode)/false(production mode)"
+            }
+        },
+        "selfExpireOn": {
+            "type": "string",
+            "defaultValue": "[dateTimeAdd(utcNow(), 'P10Y', 'yyyy-MM-dd')]",
+            "metadata": {
+                "description": "Self Expiration of this Azure Cleanup Resources in format 'yyyy-MM-dd' (example 2040-12-31). Defauls to 10 years from now"
+            }
+        }
+    },
+    "variables": {
+        "location": "[deployment().location]",
+        "deploymentUniqueId": "[uniqueString(deployment().name, deployment().location)]",
+        "policyDeploymentName": "[concat(parameters('resourceBaseName'), '-PolicyDeployment-', variables('deploymentUniqueId'))]",
+        "resourceGroupName": "[toLower(concat(parameters('resourceBaseName'), '-ResourceGroup'))]",
+        "functionAppDeploymentName": "[concat(parameters('resourceBaseName'), '-FunctionAppDeployment-', variables('deploymentUniqueId'))]",
+        "subscriptionId": "[subscription().subscriptionId]",
+        "contributorRoleId": "b24988ac-6180-42a0-ab88-20f7382dd24c"
+    },
+    "resources": [{
+            "name": "[variables('policyDeploymentName')]",
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2023-07-01",
+            "location": "[variables('location')]",
+            "properties": {
+                "mode": "Incremental",
+                "expressionEvaluationOptions": {
+                    "scope": "Inner"
+                },
+                "parameters": {
+                    "resourceBaseName": {
+                        "value": "[parameters('resourceBaseName')]"
+                    }
+                },
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/subscriptionDeploymentTemplate.json",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "resourceBaseName": {
+                            "type": "string"
+                        }
+                    },
+                    "variables": {
+                        "contributorRoleId": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+                        "location": "[deployment().location]",
+                        "expirationTagsInitiativeName": "[concat(parameters('resourceBaseName'), '-ExpirationTagsInitiative')]",
+                        "expireOnTagPolicyName": "[concat(parameters('resourceBaseName'), '-ExpireOnTagPolicy')]",
+                        "expireIfEmptyOnTagPolicyName": "[concat(parameters('resourceBaseName'), '-ExpireIfEmptyOnTagPolicy')]",
+                        "expirationTagDefaultValue": "[[take(addDays(utcNow(), 3), 10)]",
+                        "policyCategoryName": "[parameters('resourceBaseName')]"
+                    },
+                    "resources": [{
+                            "type": "Microsoft.Authorization/policyAssignments",
+                            "apiVersion": "2022-06-01",
+                            "name": "[concat(parameters('resourceBaseName'), '-ExpirationTagsPolicyAssignment')]",
+                            "location": "[variables('location')]",
+                            "identity": {
+                                "type": "SystemAssigned"
+                            },
+                            "properties": {
+                                "displayName": "[format('{0} ({1})', 'Add expiration tags', parameters('resourceBaseName'))]",
+                                "policyDefinitionId": "[resourceId('Microsoft.Authorization/policySetDefinitions', variables('expirationTagsInitiativeName'))]"
+                            },
+                            "dependsOn": [
+                                "[resourceId('Microsoft.Authorization/policySetDefinitions', variables('expirationTagsInitiativeName'))]"
+                            ]
+                        }, {
+                            "type": "Microsoft.Authorization/policySetDefinitions",
+                            "apiVersion": "2021-06-01",
+                            "name": "[variables('expirationTagsInitiativeName')]",
+                            "properties": {
+                                "displayName": "[format('{0} ({1})', 'Add expiration tags', parameters('resourceBaseName'))]",
+                                "metadata": {
+                                    "category": "[variables('policyCategoryName')]"
+                                },
+                                "policyDefinitions": [{
+                                        "policyDefinitionId": "[resourceId('Microsoft.Authorization/policyDefinitions', variables('expireOnTagPolicyName'))]"
+                                    }, {
+                                        "policyDefinitionId": "[resourceId('Microsoft.Authorization/policyDefinitions', variables('expireIfEmptyOnTagPolicyName'))]"
+                                    }
+                                ],
+                                "policyType": "Custom"
+                            },
+                            "dependsOn": [
+                                "[resourceId('Microsoft.Authorization/policyDefinitions', variables('expireOnTagPolicyName'))]",
+                                "[resourceId('Microsoft.Authorization/policyDefinitions', variables('expireIfEmptyOnTagPolicyName'))]"
+                            ]
+                        }, {
+                            "type": "Microsoft.Authorization/policyDefinitions",
+                            "apiVersion": "2021-06-01",
+                            "name": "[variables('expireOnTagPolicyName')]",
+                            "properties": {
+                                "description": "Add 'expireOn' tag with 'current date + 3 days' in the format of 'yyyy-MM-dd' to a resource",
+                                "displayName": "[format('{0} ({1})', 'Add expireOn tag', parameters('resourceBaseName'))]",
+                                "metadata": {
+                                    "category": "[variables('policyCategoryName')]"
+                                },
+                                "mode": "All",
+                                "parameters": {},
+                                "policyRule": {
+                                    "if": {
+                                        "allOf": [{
+                                                "field": "type",
+                                                "notEquals": "Microsoft.Resources/subscriptions/resourceGroups"
+                                            }, {
+                                                "field": "tags['expireOn']",
+                                                "exists": "false"
+                                            }
+                                        ]
+                                    },
+                                    "then": {
+                                        "effect": "modify",
+                                        "details": {
+                                            "roleDefinitionIds": [
+                                                "[concat('/providers/microsoft.authorization/roleDefinitions/', variables('contributorRoleId'))]"
+                                            ],
+                                            "operations": [{
+                                                    "operation": "add",
+                                                    "field": "tags['expireOn']",
+                                                    "value": "[variables('expirationTagDefaultValue')]"
+                                                }
+                                            ]
+                                        }
+                                    }
+                                },
+                                "policyType": "Custom"
+                            }
+                        }, {
+                            "type": "Microsoft.Authorization/policyDefinitions",
+                            "apiVersion": "2021-06-01",
+                            "name": "[variables('expireIfEmptyOnTagPolicyName')]",
+                            "properties": {
+                                "description": "Add 'expireIfEmptyOn' tag with 'current date + 3 days' in the format of 'yyyy-MM-dd' to a resource group",
+                                "displayName": "[format('{0} ({1})', 'Add expireIfEmptyOn tag', parameters('resourceBaseName'))]",
+                                "metadata": {
+                                    "category": "[variables('policyCategoryName')]"
+                                },
+                                "mode": "All",
+                                "parameters": {},
+                                "policyRule": {
+                                    "if": {
+                                        "allOf": [{
+                                                "field": "type",
+                                                "equals": "Microsoft.Resources/subscriptions/resourceGroups"
+                                            }, {
+                                                "field": "tags['expireIfEmptyOn']",
+                                                "exists": "false"
+                                            }
+                                        ]
+                                    },
+                                    "then": {
+                                        "effect": "modify",
+                                        "details": {
+                                            "roleDefinitionIds": [
+                                                "[concat('/providers/microsoft.authorization/roleDefinitions/', variables('contributorRoleId'))]"
+                                            ],
+                                            "operations": [{
+                                                    "operation": "add",
+                                                    "field": "tags['expireIfEmptyOn']",
+                                                    "value": "[variables('expirationTagDefaultValue')]"
+                                                }
+                                            ]
+                                        }
+                                    }
+                                },
+                                "policyType": "Custom"
+                            }
+                        }
+                    ]
+                }
+            }
+        }, {
+            "name": "[variables('resourceGroupName')]",
+            "type": "Microsoft.Resources/resourceGroups",
+            "apiVersion": "2023-07-01",
+            "location": "[variables('location')]",
+            "tags": {
+                "expireIfEmptyOn": "[parameters('selfExpireOn')]"
+            }
+        }, {
+            "name": "[variables('functionAppDeploymentName')]",
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2023-07-01",
+            "resourceGroup": "[variables('resourceGroupName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Resources/resourceGroups', variables('resourceGroupName'))]"
+            ],
+            "properties": {
+                "mode": "Incremental",
+                "expressionEvaluationOptions": {
+                    "scope": "Inner"
+                },
+                "parameters": {
+                    "resourceBaseName": {
+                        "value": "[parameters('resourceBaseName')]"
+                    },
+                    "enableTestMode": {
+                        "value": "[parameters('enableTestMode')]"
+                    },
+                    "selfExpireOn": {
+                        "value": "[parameters('selfExpireOn')]"
+                    }
+                },
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "resourceBaseName": {
+                            "type": "string"
+                        },
+                        "enableTestMode": {
+                            "type": "bool"
+                        },
+                        "selfExpireOn": {
+                            "type": "string"
+                        }
+                    },
+                    "variables": {
+                        "location": "[resourceGroup().location]",
+                        "funcionAppName": "[toLower(concat(parameters('resourceBaseName'), '-FunctionApp'))]",
+                        "functionStorageName": "[tolower(concat(substring(parameters('resourceBaseName'), 0, min(length(parameters('resourceBaseName')),21)), 'stg'))]",
+                        "appServicePlan": "[concat(parameters('resourceBaseName'), '-AppServicePlan')]",
+                        "eventGridSystemTopicName": "[concat(parameters('resourceBaseName'), '-EventGridSystemTopic')]",
+                        "functionAppRepoURL": "https://github.com/cisco-open/azure-subscription-cleanup.git",
+                        "functionAppRepoBranch": "main",
+                        "functionProjectFolder": "AzureSubscriptionCleanup-FunctionApp",
+                        "functionNameEventGridTrigger": "ResourceWrite-DurableStarter-EventGridTrigger"
+                    },
+                    "resources": [{
+                            "type": "Microsoft.EventGrid/systemTopics/eventSubscriptions",
+                            "apiVersion": "2022-06-15",
+                            "name": "[concat(variables('eventGridSystemTopicName'), '/ResourceWrite-EventGridSubscription')]",
+                            "dependsOn": [
+                                "[resourceId('Microsoft.Web/sites/sourcecontrols', variables('funcionAppName'), 'web')]",
+                                "[resourceId('Microsoft.EventGrid/systemTopics', variables('eventGridSystemTopicName'))]"
+                            ],
+                            "properties": {
+                                "destination": {
+                                    "properties": {
+                                        "resourceId": "[resourceId('Microsoft.Web/sites/functions', variables('funcionAppName'), variables('functionNameEventGridTrigger'))]",
+                                        "maxEventsPerBatch": 1,
+                                        "preferredBatchSizeInKilobytes": 64
+                                    },
+                                    "endpointType": "AzureFunction"
+                                },
+                                "filter": {
+                                    "includedEventTypes": [
+                                        "Microsoft.Resources.ResourceWriteSuccess"
+                                    ],
+                                    "enableAdvancedFilteringOnArrays": true,
+                                    "advancedFilters": [{
+                                            "values": [
+                                                "Microsoft.Authorization/policyAssignments/write",
+                                                "microsoft.insights/diagnosticSettings/write",
+                                                "Microsoft.Compute/snapshots/write",
+                                                "Microsoft.ServiceBus/namespaces/queues/write",
+                                                "Microsoft.ServiceBus/namespaces/topics/subscriptions/write",
+                                                "Microsoft.ServiceBus/namespaces/topics/write",
+                                                "Microsoft.Resources/deployments/write",
+                                                "Microsoft.EventGrid/systemTopics/eventSubscriptions/write",
+                                                "Microsoft.Authorization/roleAssignments/write"
+                                            ],
+                                            "operatorType": "StringNotIn",
+                                            "key": "data.operationName"
+                                        }, {
+                                            "values": [
+                                                "[replace(reference(resourceId('Microsoft.Web/sites', variables('funcionAppName')), '2019-08-01', 'Full').identity.principalId,'-','')]"
+                                            ],
+                                            "operatorType": "StringNotIn",
+                                            "key": "data.authorization.evidence.principalId"
+                                        }
+                                    ]
+                                },
+                                "labels": [],
+                                "eventDeliverySchema": "EventGridSchema",
+                                "retryPolicy": {
+                                    "maxDeliveryAttempts": 30,
+                                    "eventTimeToLiveInMinutes": 1440
+                                }
+                            }
+                        }, {
+                            "apiVersion": "2022-09-01",
+                            "type": "Microsoft.Web/sites",
+                            "name": "[variables('funcionAppName')]",
+                            "location": "[variables('location')]",
+                            "tags": {
+                                "expireOn": "[parameters('selfExpireOn')]"
+                            },
+                            "identity": {
+                                "type": "SystemAssigned"
+                            },
+                            "kind": "functionapp",
+                            "dependsOn": [
+                                "[resourceId('Microsoft.Web/serverfarms',variables('appServicePlan'))]",
+                                "[resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageName'))]"
+                            ],
+                            "properties": {
+                                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlan'))]",
+                                "siteConfig": {
+                                    "appSettings": [{
+                                            "name": "AzureWebJobsStorage",
+                                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=',variables('functionStorageName'),';AccountKey=',listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageName')), '2019-06-01').keys[0].value,';EndpointSuffix=','core.windows.net')]"
+                                        }, {
+                                            "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
+                                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=',variables('functionStorageName'),';AccountKey=',listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageName')), '2019-06-01').keys[0].value,';EndpointSuffix=','core.windows.net')]"
+                                        }, {
+                                            "name": "WEBSITE_CONTENTSHARE",
+                                            "value": "[variables('funcionAppName')]"
+                                        }, {
+                                            "name": "FUNCTIONS_EXTENSION_VERSION",
+                                            "value": "~4"
+                                        }, {
+                                            "name": "FUNCTIONS_WORKER_RUNTIME",
+                                            "value": "powershell"
+                                        }, {
+                                            "name": "PROJECT",
+                                            "value": "[variables('functionProjectFolder')]"
+                                        }, {
+                                            "name": "WHATIF",
+                                            "value": "[parameters('enableTestMode')]"
+                                        }
+                                    ]
+                                }
+                            },
+                            "resources": [{
+                                    "apiVersion": "2022-03-01",
+                                    "name": "web",
+                                    "type": "sourcecontrols",
+                                    "dependsOn": [
+                                        "[resourceId('Microsoft.Web/sites/', variables('funcionAppName'))]"
+                                    ],
+                                    "properties": {
+                                        "repoUrl": "[variables('functionAppRepoURL')]",
+                                        "branch": "[variables('functionAppRepoBranch')]",
+                                        "publishRunbook": true,
+                                        "isManualIntegration": true
+                                    }
+                                }
+                            ]
+                        }, {
+                            "type": "Microsoft.Storage/storageAccounts",
+                            "apiVersion": "2023-01-01",
+                            "name": "[variables('functionStorageName')]",
+                            "location": "[variables('location')]",
+                            "tags": {
+                                "expireOn": "[parameters('selfExpireOn')]"
+                            },
+                            "sku": {
+                                "name": "Standard_LRS"
+                            },
+                            "kind": "StorageV2"
+                        }, {
+                            "type": "Microsoft.Web/serverfarms",
+                            "apiVersion": "2022-09-01",
+                            "name": "[variables('appServicePlan')]",
+                            "location": "[variables('location')]",
+                            "tags": {
+                                "expireOn": "[parameters('selfExpireOn')]"
+                            },
+                            "sku": {
+                                "name": "Y1",
+                                "tier": "Dynamic"
+                            },
+                            "properties": {
+                                "name": "[variables('appServicePlan')]",
+                                "computeMode": "Dynamic"
+                            }
+                        }, {
+                            "type": "Microsoft.EventGrid/systemTopics",
+                            "apiVersion": "2022-06-15",
+                            "name": "[variables('eventGridSystemTopicName')]",
+                            "location": "global",
+                            "tags": {
+                                "expireOn": "[parameters('selfExpireOn')]"
+                            },
+                            "properties": {
+                                "source": "[subscription().id]",
+                                "topicType": "Microsoft.Resources.Subscriptions"
+                            }
+                        }
+                    ],
+                    "outputs": {
+                        "functionAppPrincipalId": {
+                            "type": "string",
+                            "value": "[reference(resourceId('Microsoft.Web/sites', variables('funcionAppName')), '2019-08-01', 'Full').identity.principalId]"
+                        }
+                    }
+                }
+            }
+        }, {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(variables('subscriptionId'), variables('deploymentUniqueId'), variables('contributorRoleId'))]",
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('contributorRoleId'))]",
+                "principalId": "[reference(variables('functionAppDeploymentName')).outputs.functionAppPrincipalId.value]"
+            }
+        }
+    ],
+    "outputs": {}
+}
