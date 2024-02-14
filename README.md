@@ -23,7 +23,7 @@ A solution deployable per Azure Subscription, consisting of [Azure Durable Funct
 To deploy the solution to an Azure Subscription please use the one click deployment button below.  
 You will need to login to your subscription and proceed with a pre-populated Azure Deployment Script
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fgithub.com%2Fraw%2Fcisco-open%2Fazure-subscription-cleanup%2Fmain%2Fdeploy.json)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fcisco-open%2Fazure-subscription-cleanup%2Fmain%2Fdeploy.json)
 
 > **_NOTE:_** To uninstall deployed resources please remove them manually.  
 > The complete list of deployed resources can be found below
