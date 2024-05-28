@@ -251,7 +251,6 @@
                         "appServicePlan": "[concat(parameters('resourceBaseName'), '-AppServicePlan')]",
                         "eventGridSystemTopicName": "[concat(parameters('resourceBaseName'), '-EventGridSystemTopic')]",
                         "functionAppRepoURL": "https://github.com/cisco-open/azure-subscription-cleanup.git",
-                        "functionAppRepoBranch": "parameters('repoBranch')",
                         "functionProjectFolder": "AzureSubscriptionCleanup-FunctionApp",
                         "functionNameEventGridTrigger": "ResourceWrite-DurableStarter-EventGridTrigger"
                     },
@@ -360,7 +359,7 @@
                                     ],
                                     "properties": {
                                         "repoUrl": "[variables('functionAppRepoURL')]",
-                                        "branch": "[variables('functionAppRepoBranch')]",
+                                        "branch": "[parameters('repoBranch')]",
                                         "publishRunbook": true,
                                         "isManualIntegration": true
                                     }
