@@ -22,6 +22,13 @@
             "metadata": {
                 "description": "Self Expiration of this Azure Cleanup Resources in format 'yyyy-MM-dd' (example 2040-12-31). Defauls to 10 years from now"
             }
+        },
+        "repoBranch": {
+            "type": "string",
+            "defaultValue": "main",
+            "metadata": {
+                "description": "Branch from the git repository to deploy the azure functions from"
+            }
         }
     },
     "variables": {
@@ -215,6 +222,9 @@
                     },
                     "selfExpireOn": {
                         "value": "[parameters('selfExpireOn')]"
+                    },
+                    "repoBranch": {
+                        "value": "[parameters('repoBranch')]"
                     }
                 },
                 "template": {
@@ -229,6 +239,9 @@
                         },
                         "selfExpireOn": {
                             "type": "string"
+                        },
+                        "repoBranch": {
+                            "type": "string"
                         }
                     },
                     "variables": {
@@ -238,7 +251,7 @@
                         "appServicePlan": "[concat(parameters('resourceBaseName'), '-AppServicePlan')]",
                         "eventGridSystemTopicName": "[concat(parameters('resourceBaseName'), '-EventGridSystemTopic')]",
                         "functionAppRepoURL": "https://github.com/cisco-open/azure-subscription-cleanup.git",
-                        "functionAppRepoBranch": "main",
+                        "functionAppRepoBranch": "parameters('repoBranch')",
                         "functionProjectFolder": "AzureSubscriptionCleanup-FunctionApp",
                         "functionNameEventGridTrigger": "ResourceWrite-DurableStarter-EventGridTrigger"
                     },
