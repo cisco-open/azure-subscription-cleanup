@@ -9,14 +9,10 @@ $ErrorActionPreference = "Stop"
 
 $resourceId = $resourceData.resourceId
 $tags = $resourceData.tags
-$whatIf = Get-WhatIf
 
 Write-Information "Resource Id: $resourceId"
 Write-Information "Tags: $($tags | ConvertTo-StringData)"
-Write-Information "What If: $whatIf"
 
-$result = Update-AzTag -ResourceId $resourceId -Operation Merge -Tag $tags -WhatIf:$whatIf
+$result = Update-AzTag -ResourceId $resourceId -Operation Merge -Tag $tags
 
-$whatIf `
-    ? "[whatif] Update-AzTag -ResourceId $resourceId -Tag @{ $($tags | ConvertTo-StringData) }" `
-    : "Update-AzTag -ResourceId $resourceId -Tag @{ $($tags | ConvertTo-StringData) }: $($result.Id); Tags: $($result.Properties.TagsProperty | ConvertTo-StringData)"
+"Update-AzTag -ResourceId $resourceId -Tag @{ $($tags | ConvertTo-StringData) }: $($result.Id); Tags: $($result.Properties.TagsProperty | ConvertTo-StringData)"
