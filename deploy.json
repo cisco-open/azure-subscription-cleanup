@@ -6,28 +6,28 @@
             "defaultValue": "AzureSubscriptionCleanup",
             "type": "string",
             "metadata": {
-                "description": "Base name for Azure Cleanup Resources that will be deployed by this script"
+                "description": "Base name for all resources deployed for Azure Subscription Cleanup"
             }
         },
         "enableTestMode": {
             "defaultValue": "true",
             "type": "bool",
             "metadata": {
-                "description": "When set to true Azure Functions will work in a test mode and will not remove expired resources. Can be changed after deployment by updating the environment variable on Azure Function App: WHATIF=true(test mode)/false(production mode)"
+                "description": "When set to true Azure Subscription Cleanup will keep maintaining the tags but will not remove expired resources. Can be changed after deployment by updating this environment variable in Azure Subscription Cleanup Function App: WHATIF=true/false to enable/disable test mode"
             }
         },
         "selfExpireOn": {
             "type": "string",
             "defaultValue": "[dateTimeAdd(utcNow(), 'P10Y', 'yyyy-MM-dd')]",
             "metadata": {
-                "description": "Self Expiration of this Azure Cleanup Resources in format 'yyyy-MM-dd' (example 2040-12-31). Defauls to 10 years from now"
+                "description": "Self Expiration for the resources deployed as part of Azure Subscription Cleanup in format 'yyyy-MM-dd' (example 2040-12-31). Defauls to 10 years from the deployment"
             }
         },
         "repoBranch": {
             "type": "string",
             "defaultValue": "main",
             "metadata": {
-                "description": "Branch from the git repository to deploy the azure functions from"
+                "description": "Change this setting only if you wand to deploy the code for the Azure Subscription Cleanup Function App from a custom branch in the github repo. Otherwise leave default value 'main'. It is not recommeneded to change this value for production deployment"
             }
         }
     },
